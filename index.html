@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>Pixel Fighter — 2D Dövüş</title>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101020;color:#fff;font-family:system-ui,Arial,sans-serif;display:flex;justify-content:center;min-height:100vh}
+#wrap{width:min(100%,1000px);padding:12px;display:flex;flex-direction:column;gap:10px}
+header{display:flex;align-items:center;justify-content:space-between;gap:8px}h1{font-size:clamp(18px,4vw,28px);margin:0;color:#ffcc4d;letter-spacing:1px}.sub{font-size:12px;color:#b9b9d7}
+#gamebox{position:relative;border:3px solid #4a3c79;border-radius:12px;overflow:hidden;background:#17152e;box-shadow:0 12px 35px #0008}
+canvas{display:block;width:100%;height:auto;image-rendering:pixelated;touch-action:none}
+#overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;background:#080817d9;text-align:center;padding:20px}
+.panel{max-width:440px}.panel h2{color:#ffcc4d;margin:0 0 8px}.panel p{line-height:1.5;color:#ddd}.btn{border:0;border-radius:10px;padding:12px 18px;background:#ffcc4d;color:#21182c;font-weight:800;font-size:15px;cursor:pointer}
+#hud{display:flex;justify-content:space-between;align-items:center;gap:8px;font-weight:700;font-size:13px}.bar{height:13px;background:#3c2949;border:2px solid #79608e;border-radius:9px;overflow:hidden;flex:1;min-width:70px}.fill{height:100%;width:100%;background:linear-gradient(90deg,#53e27d,#c9ff65);transition:width .1s}
+.hudside{display:flex;align-items:center;gap:7px;flex:1}.hudside.right{flex-direction:row-reverse}.name{white-space:nowrap}
+#controls{display:flex;justify-content:space-between;gap:12px;align-items:center;user-select:none}
+.cluster{display:flex;gap:8px;align-items:center}.control{width:58px;height:58px;border:2px solid #7264a8;border-radius:14px;background:#282345;color:#fff;font-weight:900;font-size:22px;box-shadow:0 4px 0 #151126;touch-action:none}
+.control.attack{background:#8d214c;border-color:#e65b8a;width:70px}.control.jump{background:#245b86;border-color:#5bb7ee}
+.control:active{transform:translateY(3px);box-shadow:0 1px 0 #151126}.help{font-size:12px;color:#aaa9c8;text-align:center}
+@media(min-width:700px){#controls{max-width:600px;margin:auto}.control{width:64px;height:56px}}
+</style>
+</head>
+<body><main id="wrap">
+<header><div><h1>PIXEL FIGHTER</h1><div class="sub">2D ARENA • BÖLÜM 1</div></div><button class="btn" id="restartTop">↻ Yeniden</button></header>
+<div id="hud">
+ <div class="hudside"><span class="name">SEN</span><div class="bar"><div id="pbar" class="fill"></div></div><span id="php">100</span></div>
+ <strong id="timer">60</strong>
+ <div class="hudside right"><span class="name">RAKİP</span><div class="bar"><div id="ebar" class="fill"></div></div><span id="ehp">100</span></div>
+</div>
+<div id="gamebox"><canvas id="game" width="800" height="450" aria-label="2D dövüş oyunu"></canvas>
+<div id="overlay"><div class="panel"><h2>PIXEL FIGHTER</h2><p>Kızıl saçlı savaşçını yönet! Rakibine yaklaş, yumruk at ve raundu kazan.</p><p><b>Bilgisayar:</b> A/D hareket · W zıpla · J yumruk · K tekme<br><b>Telefon:</b> alttaki düğmeleri kullan.</p><button class="btn" id="start">DÖVÜŞE BAŞLA</button></div></div></div>
+<div id="controls">
+ <div class="cluster"><button class="control" data-key="a" aria-label="Sola">◀</button><button class="control" data-key="d" aria-label="Sağa">▶</button></div>
+ <div class="cluster"><button class="control jump" data-key="w">⬆</button><button class="control attack" data-key="j">YUMRUK</button><button class="control attack" data-key="k">TEKME</button></div>
+</div>
+<div class="help">İpucu: rakibe yakınken saldır. Rakip de karşılık verir!</div>
+</main>
+<script>
+const canvas=document.getElementById('game'),ctx=canvas.getContext('2d');
+const overlay=document.getElementById('overlay'),startBtn=document.getElementById('start');
+const keys={}; let running=false,ended=false,time=60,last=0,elapsed=0,shake=0;
+const floor=370;
+function fighter(x,player){return {x,y:floor,w:player?54:52,h:104,vx:0,vy:0,hp:100,face:player?1:-1,player,attack:0,attackType:'j',cool:0,hitFlash:0,jump:false,aiWait:0,anim:0}}
+let p,e;
+function reset(){p=fighter(220,true);e=fighter(580,false);time=60;elapsed=0;shake=0;ended=false;updateHud()}
+function start(){reset();running=true;overlay.style.display='none';last=performance.now();requestAnimationFrame(loop)}
+function finish(msg){running=false;ended=true;overlay.style.display='flex';overlay.innerHTML=`<div class="panel"><h2>${msg}</h2><p>Sen: ${p.hp} can · Rakip: ${e.hp} can</p><button class="btn" id="again">TEKRAR DÖVÜŞ</button></div>`;document.getElementById('again').onclick=start}
+function updateHud(){document.getElementById('pbar').style.width=Math.max(0,p.hp)+'%';document.getElementById('ebar').style.width=Math.max(0,e.hp)+'%';document.getElementById('php').textContent=Math.max(0,Math.ceil(p.hp));document.getElementById('ehp').textContent=Math.max(0,Math.ceil(e.hp));document.getElementById('timer').textContent=Math.ceil(time)}
+function attack(f,type){if(f.cool>0||f.attack>0)return;f.attack=type==='k'?19:13;f.attackType=type;f.cool=type==='k'?0.65:0.38}
+function hit(att,def){let reach=att.attackType==='k'?92:73;let active=att.attack>(att.attackType==='k'?7:5)&&att.attack<(att.attackType==='k'?14:10);
+ if(active&&att.face*(def.x-att.x)>0&&Math.abs(def.x-att.x)<reach&&Math.abs((def.y-def.h/2)-(att.y-att.h/2))<65&&def.hitFlash<=0){def.hp-=att.attackType==='k'?11:7;def.hitFlash=0.22;def.vx=att.face*(att.attackType==='k'?220:150);shake=5}}
+function update(dt){elapsed+=dt;time-=dt;if(time<=0){time=0;finish(p.hp===e.hp?'BERABERE!':p.hp>e.hp?'KAZANDIN!':'KAYBETTİN!');return}
+ for(const f of [p,e]){f.cool=Math.max(0,f.cool-dt);f.attack=Math.max(0,f.attack-dt*60);f.hitFlash=Math.max(0,f.hitFlash-dt);f.anim+=dt*10}
+ // player input
+ p.vx=0;if(keys.a)p.vx=-220;if(keys.d)p.vx=220;if(keys.w&&!p.jump){p.vy=-440;p.jump=true}if(keys.j)attack(p,'j');if(keys.k)attack(p,'k');
+ // simple enemy AI
+ let dx=p.x-e.x,dist=Math.abs(dx);e.face=dx>0?1:-1;
+ if(dist>78)e.vx=Math.sign(dx)*145;else {e.vx=0;e.aiWait-=dt;if(e.aiWait<=0){attack(e,Math.random()<.68?'j':'k');e.aiWait=.35+Math.random()*.55}}
+ // gravity and movement
+ for(const f of [p,e]){if(f.hitFlash>0){} if(f!==p||(!keys.a&&!keys.d)){} f.x+=f.vx*dt;f.y+=f.vy*dt;f.vy+=1100*dt;if(f.y>=floor){f.y=floor;f.vy=0;f.jump=false}f.x=Math.max(35,Math.min(765,f.x));}
+ if(Math.abs(p.x-e.x)<48){let sign=Math.sign(p.x-e.x)||1;p.x+=sign*1.5;e.x-=sign*1.5}
+ hit(p,e);hit(e,p);updateHud();shake=Math.max(0,shake-dt*20);
+ if(p.hp<=0||e.hp<=0)finish(p.hp<=0&&e.hp<=0?'BERABERE!':e.hp<=0?'KAZANDIN!':'KAYBETTİN!');
+}
+function rect(x,y,w,h,c){ctx.fillStyle=c;ctx.fillRect(Math.round(x),Math.round(y),w,h)}
+function drawFighter(f){ctx.save();ctx.translate(Math.round(f.x),Math.round(f.y));ctx.scale(f.face,1);const hurt=f.hitFlash>0;const outline='#100d18',skin=hurt?'#ffb3a8':'#e8b47e',red=hurt?'#ffb3a8':'#a90d36',dark='#4b2b65',gold='#f5c83f';
+ // legs
+ rect(-25,-45,21,42,outline);rect(5,-45,21,42,outline);rect(-21,-42,13,35,'#f4d63e');rect(8,-42,13,35,'#f4d63e');rect(-21,-13,13,8,'#9b102b');rect(8,-13,13,8,'#9b102b');
+ // torso and arms
+ rect(-27,-83,54,42,outline);rect(-21,-79,42,34,skin);for(let i=0;i<3;i++)rect(-17,-72+i*9,34,3,'#c28a5b');
+ rect(-35,-79,12,38,outline);rect(-32,-75,8,29,skin);rect(-35,-54,12,9,dark);
+ rect(23,-81,13,33,outline);rect(26,-77,7,25,skin);
+ // head
+ rect(-27,-122,54,43,outline);rect(-22,-118,44,35,skin);
+ // pixel hair
+ rect(-30,-135,60,29,outline);rect(-25,-137,50,12,red);rect(-30,-130,10,18,red);rect(-17,-127,14,8,'#770b2c');rect(1,-128,22,9,red);rect(15,-133,12,18,'#780b2b');rect(-25,-109,8,10,red);rect(19,-109,8,10,red);
+ // eyes and mouth
+ rect(-16,-107,10,10,'#f4f000');rect(7,-107,10,10,'#f4f000');rect(-5,-91,13,4,outline);
+ // shoulder cape
+ rect(-42,-81,16,12,dark);rect(26,-81,17,12,dark);rect(-47,-73,19,8,dark);rect(29,-73,18,8,dark);
+ // attack arm extends toward facing
+ if(f.attack>0){let isKick=f.attackType==='k';if(!isKick){rect(25,-78,40,14,outline);rect(31,-75,31,8,skin);rect(54,-77,14,12,'#e8b47e')}else{rect(4,-47,45,16,outline);rect(12,-44,35,10,'#f4d63e')}}
+ ctx.restore()}
+function draw(){ctx.save();if(shake>0)ctx.translate((Math.random()-.5)*shake,(Math.random()-.5)*shake);
+ // sky and distant skyline
+ let g=ctx.createLinearGradient(0,0,0,450);g.addColorStop(0,'#211b46');g.addColorStop(1,'#56305b');ctx.fillStyle=g;ctx.fillRect(0,0,800,450);
+ for(let i=0;i<12;i++){let x=i*74;rect(x,190+(i%3)*25,48,180,'#30264d');for(let j=0;j<3;j++)rect(x+9+j*13,205+(i%3)*25,5,9,'#e0a84b')}
+ // moon and pixel stars
+ rect(650,55,38,38,'#ffdc82');rect(661,47,30,30,'#211b46');
+ for(let i=0;i<25;i++){let x=(i*97+31)%800,y=(i*43+17)%170;rect(x,y,3,3,'#fff0b4')}
+ rect(0,floor,800,80,'#29203e');rect(0,floor,800,5,'#e0a84b');for(let i=0;i<20;i++)rect(i*42,floor+22,22,3,'#403052');
+ // shadows
+ ctx.fillStyle='#0b091b88';ctx.beginPath();ctx.ellipse(p.x,floor+4,34,8,0,0,Math.PI*2);ctx.fill();ctx.beginPath();ctx.ellipse(e.x,floor+4,34,8,0,0,Math.PI*2);ctx.fill();
+ drawFighter(p);drawFighter(e);
+ ctx.fillStyle='#fff';ctx.font='bold 14px monospace';ctx.fillText('PLAYER 1',p.x-35,245);ctx.fillText('CPU FIGHTER',e.x-42,245);
+ ctx.restore()}
+function loop(now){if(!running)return;let dt=Math.min((now-last)/1000,.04);last=now;update(dt);draw();if(running)requestAnimationFrame(loop)}
+window.addEventListener('keydown',ev=>{let k=ev.key.toLowerCase();if(['a','d','w','j','k',' '].includes(k))ev.preventDefault();keys[k]=true;if(k==='enter'&&!running)start()});
+window.addEventListener('keyup',ev=>keys[ev.key.toLowerCase()]=false);
+document.querySelectorAll('[data-key]').forEach(b=>{const k=b.dataset.key;const down=e=>{e.preventDefault();keys[k]=true};const up=e=>{e.preventDefault();keys[k]=false};b.addEventListener('pointerdown',down);b.addEventListener('pointerup',up);b.addEventListener('pointercancel',up);b.addEventListener('pointerleave',up)});
+startBtn.onclick=start;document.getElementById('restartTop').onclick=()=>{if(running){reset();}else start()};
+reset();draw();
+</script></body></html>
